@@ -1,106 +1,112 @@
 /*
  * undo_stack.c
  * ------------
- * Implementation of the undo STACK.
- * The actual "undo" logic (which needs trains, seats and queues) lives in
- * railway.c and uses peek()/pop() from here.
+ * STACK of booking/cancellation operations (Last In, First Out).
+ *
+ *   undoTop -> [CANCEL 100005] -> [BOOK 100004] -> [BOOK 100003] -> NULL
+ *
+ * Each node keeps a COPY of the ticket, not a pointer, because a
+ * cancelled passenger node is freed and a pointer to it would be invalid.
  */
-#include <stdio.h>
-#include <stdlib.h>
-#include "undo_stack.h"
+#include "railway.h"
 
-void initStack(UndoStack *s)
+struct UndoNode *undoTop = NULL;    /* top of the stack */
+
+/* Returns 1 if there is nothing to undo. */
+int isStackEmpty(void)
 {
-    s->top = NULL;
-    s->size = 0;
+    return undoTop == NULL;
 }
 
-int isStackEmpty(const UndoStack *s)
+/* Pushes a new operation. 'promoted' can be NULL if nobody was promoted. */
+void pushOperation(int operation, struct Passenger *ticket, struct Passenger *promoted)
 {
-    return s->top == NULL;
-}
+    struct UndoNode *node = malloc(sizeof(struct UndoNode));
+    checkMemory(node);
 
-int push(UndoStack *s, OperationType type, const TicketRecord *ticket,
-         const TicketRecord *promoted)
-{
-    Operation *node = (Operation *)malloc(sizeof(Operation));
-    if (node == NULL)
-    {
-        printf("Memory allocation failed for undo record.\n");
-        return 0;
-    }
-    node->type = type;
-    node->ticket = *ticket;
-    node->hasPromotion = (promoted != NULL);
+    node->operation = operation;
+    node->ticket = *ticket;                 /* copy the whole structure */
+    node->ticket.next = NULL;
+
     if (promoted != NULL)
-        node->promoted = *promoted;
-
-    node->next = s->top;
-    s->top = node;
-    s->size++;
-    return 1;
-}
-
-int pop(UndoStack *s, Operation *out)
-{
-    Operation *node;
-    if (isStackEmpty(s))
-        return 0;
-
-    node = s->top;
-    s->top = node->next;
-    s->size--;
-
-    if (out != NULL)
     {
-        *out = *node;
-        out->next = NULL;
+        node->hasPromotion = 1;
+        node->promoted = *promoted;
+        node->promoted.next = NULL;
     }
-    free(node);
-    return 1;
+    else
+        node->hasPromotion = 0;
+
+    node->next = undoTop;                   /* new node goes on top */
+    undoTop = node;
 }
 
-Operation *peek(const UndoStack *s)
+/* Removes and returns the top operation (the caller must free it), or NULL if empty. */
+struct UndoNode *popOperation(void)
 {
-    return s->top;
+    struct UndoNode *top = undoTop;
+
+    if (top == NULL)
+        return NULL;
+
+    undoTop = top->next;
+    top->next = NULL;
+    return top;
 }
 
-const char *operationName(OperationType type)
+/* Returns the top operation without removing it. */
+struct UndoNode *peekOperation(void)
 {
-    return type == OP_BOOK ? "BOOK" : "CANCEL";
+    return undoTop;
 }
 
-void displayStack(const UndoStack *s)
+/* Prints the 10 most recent operations, newest first. */
+void displayStack(void)
 {
-    Operation *cur = s->top;
-    int shown = 0;
-    if (cur == NULL)
+    struct UndoNode *node = undoTop;
+    int shown = 0, remaining = 0;
+
+    if (node == NULL)
     {
         printf("Undo stack is empty.\n");
         return;
     }
 
     printf("TOP\n |\n v\n");
-    while (cur != NULL)
+    while (node != NULL && shown < 10)
     {
-        if (shown == MAX_STACK_DISPLAY)
-        {
-            printf("... and %d older operation(s)\n", s->size - shown);
-            return;
-        }
-        shown++;
-        printf("%-6s PNR %d  (%s, Train %d, C%d-%02d)",
-               operationName(cur->type), cur->ticket.pnr, cur->ticket.name,
-               cur->ticket.trainNumber, cur->ticket.coachNumber, cur->ticket.seatNumber);
-        if (cur->hasPromotion)
-            printf("  [promoted PNR %d]", cur->promoted.pnr);
+        if (node->operation == OP_BOOK)
+            printf("BOOK   ");
+        else
+            printf("CANCEL ");
+
+        printf("PNR %d  (%s, Train %d, C%d-%02d)", node->ticket.pnr, node->ticket.name,
+               node->ticket.trainNumber, node->ticket.coachNumber, node->ticket.seatNumber);
+        if (node->hasPromotion)
+            printf("  [promoted PNR %d]", node->promoted.pnr);
         printf("\n");
-        cur = cur->next;
+
+        shown++;
+        node = node->next;
     }
+
+    while (node != NULL)                    /* count the older ones we did not print */
+    {
+        remaining++;
+        node = node->next;
+    }
+    if (remaining > 0)
+        printf("... and %d older operation(s)\n", remaining);
 }
 
-void freeStack(UndoStack *s)
+/* Frees the whole stack. */
+void freeStack(void)
 {
-    while (pop(s, NULL))
-        ;
+    struct UndoNode *node = popOperation();
+
+    while (node != NULL)
+    {
+        free(node);
+        node = popOperation();
+    }
 }

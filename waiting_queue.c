@@ -1,168 +1,149 @@
 /*
  * waiting_queue.c
  * ---------------
- * Implementation of the waiting-list QUEUE.
+ * QUEUE of waiting passengers of one train (First In, First Out).
+ *
+ *   waitFront -> [Priya] -> [Arjun] -> [Meera] <- waitRear
+ *
+ * New passengers join at the REAR, promotion takes them from the FRONT.
  */
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include "waiting_queue.h"
-#include "route_dll.h"
+#include "railway.h"
 
-static void copyText(char *dest, const char *src, int size)
+/* Returns 1 if nobody is waiting. */
+int isQueueEmpty(struct TrainNode *train)
 {
-    strncpy(dest, src, size - 1);
-    dest[size - 1] = '\0';
+    return train->waitFront == NULL;
 }
 
-void initQueue(WaitingQueue *q)
+/* Adds a passenger at the rear of the queue. */
+void enqueue(struct TrainNode *train, struct Passenger *passenger)
 {
-    q->front = NULL;
-    q->rear = NULL;
-    q->size = 0;
-}
+    passenger->next = NULL;
 
-int isQueueEmpty(const WaitingQueue *q)
-{
-    return q->front == NULL;
-}
-
-int enqueue(WaitingQueue *q, int pnr, const char *name, int age, const char *gender,
-            const char *source, const char *destination, float fare)
-{
-    WaitingPassenger *node = (WaitingPassenger *)malloc(sizeof(WaitingPassenger));
-    if (node == NULL)
-    {
-        printf("Memory allocation failed for waiting list entry.\n");
-        return 0;
-    }
-    node->pnr = pnr;
-    copyText(node->name, name, NAME_LEN);
-    node->age = age;
-    copyText(node->gender, gender, GENDER_LEN);
-    copyText(node->source, source, NAME_LEN);
-    copyText(node->destination, destination, NAME_LEN);
-    node->fare = fare;
-    node->next = NULL;
-
-    if (q->rear == NULL)
-        q->front = node;
+    if (train->waitRear == NULL)
+        train->waitFront = passenger;       /* queue was empty */
     else
-        q->rear->next = node;
-    q->rear = node;
-    q->size++;
-    return 1;
+        train->waitRear->next = passenger;
+
+    train->waitRear = passenger;
 }
 
-int dequeue(WaitingQueue *q, WaitingPassenger *out)
+/* Removes and returns the passenger at the front, or NULL if the queue is empty. */
+struct Passenger *dequeue(struct TrainNode *train)
 {
-    WaitingPassenger *node;
-    if (isQueueEmpty(q))
-        return 0;
+    struct Passenger *first = train->waitFront;
 
-    node = q->front;
-    q->front = node->next;
-    if (q->front == NULL)
-        q->rear = NULL;
-    q->size--;
+    if (first == NULL)
+        return NULL;
 
-    if (out != NULL)
+    train->waitFront = first->next;
+    if (train->waitFront == NULL)
+        train->waitRear = NULL;             /* queue became empty */
+
+    first->next = NULL;
+    return first;
+}
+
+/* Returns the front passenger without removing it. */
+struct Passenger *peekQueue(struct TrainNode *train)
+{
+    return train->waitFront;
+}
+
+/*
+ * Puts a passenger back at the FRONT of the queue.
+ * Used only by UNDO, to put a promoted passenger back exactly where they were.
+ */
+void addToFrontOfQueue(struct TrainNode *train, struct Passenger *passenger)
+{
+    passenger->next = train->waitFront;
+    train->waitFront = passenger;
+
+    if (train->waitRear == NULL)
+        train->waitRear = passenger;
+}
+
+/* Counts waiting passengers. */
+int countWaiting(struct TrainNode *train)
+{
+    struct Passenger *current = train->waitFront;
+    int count = 0;
+
+    while (current != NULL)
     {
-        *out = *node;
-        out->next = NULL;
+        count++;
+        current = current->next;
     }
-    free(node);
-    return 1;
+    return count;
 }
 
-WaitingPassenger *peekQueue(const WaitingQueue *q)
+/* Returns the waiting-list position (1 = front) of a PNR, or 0 if not waiting. */
+int getWaitingPosition(struct TrainNode *train, int pnr)
 {
-    return q->front;
-}
+    struct Passenger *current = train->waitFront;
+    int position = 1;
 
-int restoreFront(WaitingQueue *q, const WaitingPassenger *data)
-{
-    WaitingPassenger *node = (WaitingPassenger *)malloc(sizeof(WaitingPassenger));
-    if (node == NULL)
+    while (current != NULL)
     {
-        printf("Memory allocation failed for waiting list entry.\n");
-        return 0;
-    }
-    *node = *data;
-    node->next = q->front;
-    q->front = node;
-    if (q->rear == NULL)
-        q->rear = node;
-    q->size++;
-    return 1;
-}
-
-int queuePosition(const WaitingQueue *q, int pnr)
-{
-    WaitingPassenger *cur = q->front;
-    int pos = 1;
-    while (cur != NULL)
-    {
-        if (cur->pnr == pnr)
-            return pos;
-        pos++;
-        cur = cur->next;
+        if (current->pnr == pnr)
+            return position;
+        position++;
+        current = current->next;
     }
     return 0;
 }
 
-WaitingPassenger *searchQueue(const WaitingQueue *q, int pnr)
+/* Returns the waiting passenger with this PNR, or NULL. */
+struct Passenger *searchWaitingList(struct TrainNode *train, int pnr)
 {
-    WaitingPassenger *cur = q->front;
-    while (cur != NULL)
+    struct Passenger *current = train->waitFront;
+
+    while (current != NULL)
     {
-        if (cur->pnr == pnr)
-            return cur;
-        cur = cur->next;
+        if (current->pnr == pnr)
+            return current;
+        current = current->next;
     }
     return NULL;
 }
 
-int queueUsesStation(const WaitingQueue *q, const char *station)
+/* Prints the queue from FRONT to REAR. */
+void displayWaitingList(struct TrainNode *train)
 {
-    WaitingPassenger *cur = q->front;
-    while (cur != NULL)
-    {
-        if (namesEqual(cur->source, station) || namesEqual(cur->destination, station))
-            return 1;
-        cur = cur->next;
-    }
-    return 0;
-}
+    struct Passenger *current = train->waitFront;
+    int position = 1;
 
-void displayQueue(const WaitingQueue *q)
-{
-    WaitingPassenger *cur = q->front;
-    int pos = 1;
-
-    if (isQueueEmpty(q))
+    if (current == NULL)
     {
         printf("Waiting list is empty.\n");
         return;
     }
 
-    printf("Waiting passengers: %d\n\n", q->size);
+    printf("Waiting passengers: %d\n\n", countWaiting(train));
     printf("FRONT\n  |\n  v\n");
-    while (cur != NULL)
+
+    while (current != NULL)
     {
         printf("WL%-3d PNR %-7d %-18.18s Age %-3d %-7.7s %s -> %s",
-               pos, cur->pnr, cur->name, cur->age, cur->gender,
-               cur->source, cur->destination);
-        if (cur == q->rear)
+               position, current->pnr, current->name, current->age,
+               current->gender, current->source, current->destination);
+        if (current == train->waitRear)
             printf("   <- REAR");
         printf("\n");
-        pos++;
-        cur = cur->next;
+
+        position++;
+        current = current->next;
     }
 }
 
-void freeQueue(WaitingQueue *q)
+/* Frees every waiting passenger. */
+void freeWaitingList(struct TrainNode *train)
 {
-    while (dequeue(q, NULL))
-        ;
+    struct Passenger *passenger = dequeue(train);
+
+    while (passenger != NULL)
+    {
+        free(passenger);
+        passenger = dequeue(train);
+    }
 }

@@ -1,175 +1,181 @@
 /*
  * train_bst.c
  * -----------
- * Implementation of the train BINARY SEARCH TREE.
+ * BINARY SEARCH TREE of trains. The key is the train number.
+ * Smaller numbers go to the left, bigger numbers go to the right.
  */
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include "train_bst.h"
+#include "railway.h"
 
-static void copyText(char *dest, const char *src, int size)
+/* Creates a new train and sets up ALL of its own data structures. */
+struct TrainNode *createTrain(int trainNumber, char name[], char source[], char destination[])
 {
-    strncpy(dest, src, size - 1);
-    dest[size - 1] = '\0';
+    struct TrainNode *train = malloc(sizeof(struct TrainNode));
+    checkMemory(train);
+
+    train->trainNumber = trainNumber;
+    strcpy(train->trainName, name);
+    strcpy(train->source, source);
+    strcpy(train->destination, destination);
+
+    train->routeHead = NULL;                /* 1. route (doubly linked list) */
+    train->routeTail = NULL;
+    addStationAtEnd(train, source);
+    addStationAtEnd(train, destination);
+
+    createCoaches(train);                   /* 2. coaches (circular linked list) */
+    initSeats(train);                       /* 3. seats (array) */
+
+    train->passengerHead = NULL;            /* 4. empty passenger list (singly linked list) */
+    train->waitFront = NULL;                /* 5. empty waiting list (queue) */
+    train->waitRear = NULL;
+
+    train->left = NULL;
+    train->right = NULL;
+    return train;
 }
 
-TrainNode *createTrain(int trainNumber, const char *name,
-                       const char *source, const char *destination)
-{
-    TrainNode *t = (TrainNode *)malloc(sizeof(TrainNode));
-    if (t == NULL)
-    {
-        printf("Memory allocation failed for train.\n");
-        return NULL;
-    }
-
-    t->trainNumber = trainNumber;
-    copyText(t->trainName, name, NAME_LEN);
-    copyText(t->source, source, NAME_LEN);
-    copyText(t->destination, destination, NAME_LEN);
-    t->left = NULL;
-    t->right = NULL;
-
-    /* 1. Route (DLL): source <-> destination */
-    initRoute(&t->route);
-    if (addStationAtEnd(&t->route, source) != ROUTE_OK ||
-        addStationAtEnd(&t->route, destination) != ROUTE_OK)
-    {
-        freeRoute(&t->route);
-        free(t);
-        return NULL;
-    }
-
-    /* 2. Coaches (CLL) */
-    t->coaches = createCoaches(MAX_COACHES);
-    if (t->coaches == NULL)
-    {
-        freeRoute(&t->route);
-        free(t);
-        return NULL;
-    }
-    t->nextCoach = t->coaches;
-
-    /* 3. Seats (Array) */
-    initSeats(t->seats);
-
-    /* 4. Confirmed passengers (SLL) and 5. waiting list (Queue) */
-    t->passengers = NULL;
-    initQueue(&t->waitingList);
-    return t;
-}
-
-TrainNode *insertTrain(TrainNode *root, TrainNode *node, int *inserted)
+/* Inserts a train into the BST and returns the (new) root. */
+struct TrainNode *insertTrain(struct TrainNode *root, struct TrainNode *newTrain)
 {
     if (root == NULL)
-    {
-        *inserted = 1;
-        return node;
-    }
-    if (node->trainNumber < root->trainNumber)
-        root->left = insertTrain(root->left, node, inserted);
-    else if (node->trainNumber > root->trainNumber)
-        root->right = insertTrain(root->right, node, inserted);
+        return newTrain;
+
+    if (newTrain->trainNumber < root->trainNumber)
+        root->left = insertTrain(root->left, newTrain);
     else
-        *inserted = 0; /* duplicate key */
+        root->right = insertTrain(root->right, newTrain);
     return root;
 }
 
-TrainNode *searchTrain(TrainNode *root, int trainNumber)
+/* Searches the BST for a train number. Returns NULL if not found. */
+struct TrainNode *searchTrain(struct TrainNode *root, int trainNumber)
 {
-    while (root != NULL)
-    {
-        if (trainNumber == root->trainNumber)
-            return root;
-        root = (trainNumber < root->trainNumber) ? root->left : root->right;
-    }
-    return NULL;
+    if (root == NULL || root->trainNumber == trainNumber)
+        return root;
+
+    if (trainNumber < root->trainNumber)
+        return searchTrain(root->left, trainNumber);
+    else
+        return searchTrain(root->right, trainNumber);
 }
 
-TrainNode *deleteTrain(TrainNode *root, int trainNumber, int *deleted)
+/* Returns the train with the smallest number (the leftmost node). */
+struct TrainNode *findMinimum(struct TrainNode *root)
 {
-    TrainNode *replacement, *parent, *succ;
+    while (root->left != NULL)
+        root = root->left;
+    return root;
+}
+
+/*
+ * Removes the leftmost node of a subtree.
+ * Only the node itself is freed - its data was already copied somewhere else.
+ */
+struct TrainNode *removeMinimum(struct TrainNode *root)
+{
+    struct TrainNode *rightChild;
+
+    if (root->left == NULL)
+    {
+        rightChild = root->right;
+        free(root);
+        return rightChild;
+    }
+    root->left = removeMinimum(root->left);
+    return root;
+}
+
+/* Copies all train data from 'source' into 'destination' but keeps destination's children. */
+void copyTrainData(struct TrainNode *destination, struct TrainNode *source)
+{
+    struct TrainNode *leftChild = destination->left;
+    struct TrainNode *rightChild = destination->right;
+
+    *destination = *source;
+    destination->left = leftChild;
+    destination->right = rightChild;
+}
+
+/* Deletes a train from the BST, frees all its memory and returns the (new) root. */
+struct TrainNode *deleteTrain(struct TrainNode *root, int trainNumber)
+{
+    struct TrainNode *child, *successor;
 
     if (root == NULL)
         return NULL;
 
     if (trainNumber < root->trainNumber)
-    {
-        root->left = deleteTrain(root->left, trainNumber, deleted);
-        return root;
-    }
-    if (trainNumber > root->trainNumber)
-    {
-        root->right = deleteTrain(root->right, trainNumber, deleted);
-        return root;
-    }
-
-    /* Found the node to delete */
-    if (root->left == NULL)
-        replacement = root->right;          /* case 1/2: no left child  */
-    else if (root->right == NULL)
-        replacement = root->left;           /* case 2: no right child   */
+        root->left = deleteTrain(root->left, trainNumber);
+    else if (trainNumber > root->trainNumber)
+        root->right = deleteTrain(root->right, trainNumber);
     else
     {
-        /* case 3: two children -> inorder successor (leftmost of right subtree).
-           The successor node itself is relinked into this position, so its
-           route/seat/passenger data moves with it and nothing is copied. */
-        parent = root;
-        succ = root->right;
-        while (succ->left != NULL)
+        /* Case 1 and 2: node has no child or only one child */
+        if (root->left == NULL)
         {
-            parent = succ;
-            succ = succ->left;
+            child = root->right;
+            freeTrain(root);
+            return child;
         }
-        if (parent != root)
+        if (root->right == NULL)
         {
-            parent->left = succ->right;
-            succ->right = root->right;
+            child = root->left;
+            freeTrain(root);
+            return child;
         }
-        succ->left = root->left;
-        replacement = succ;
-    }
 
-    freeTrain(root);
-    *deleted = 1;
-    return replacement;
+        /* Case 3: two children -> replace with the inorder successor */
+        successor = findMinimum(root->right);
+        freeTrainData(root);                      /* free the deleted train's lists */
+        copyTrainData(root, successor);           /* successor's train moves here   */
+        root->right = removeMinimum(root->right); /* remove the old successor node  */
+    }
+    return root;
 }
 
-void inorderTrains(TrainNode *root)
+/* INORDER traversal (left, root, right) prints the trains sorted by number. */
+void displayAllTrains(struct TrainNode *root)
 {
     if (root == NULL)
         return;
-    inorderTrains(root->left);
+
+    displayAllTrains(root->left);
     printf("%d - %-22.22s %-12.12s -> %-12.12s Seats %2d/%d  WL %d\n",
            root->trainNumber, root->trainName, root->source, root->destination,
-           countAvailableSeats(root->seats), TOTAL_SEATS, root->waitingList.size);
-    inorderTrains(root->right);
+           countFreeSeats(root), TOTAL_SEATS, countWaiting(root));
+    displayAllTrains(root->right);
 }
 
-int countTrains(TrainNode *root)
+/* Counts the trains in the BST. */
+int countTrains(struct TrainNode *root)
 {
     if (root == NULL)
         return 0;
     return 1 + countTrains(root->left) + countTrains(root->right);
 }
 
-void freeTrain(TrainNode *train)
+/* Frees everything a train owns: route, coaches, passengers and waiting list. */
+void freeTrainData(struct TrainNode *train)
 {
-    if (train == NULL)
-        return;
-    freeRoute(&train->route);
-    freeCoaches(&train->coaches);
-    train->nextCoach = NULL;
-    freePassengerList(&train->passengers);
-    freeQueue(&train->waitingList);
+    freeRoute(train);
+    freeCoaches(train);
+    freePassengers(train);
+    freeWaitingList(train);
+}
+
+/* Frees a train's data and the train node itself. */
+void freeTrain(struct TrainNode *train)
+{
+    freeTrainData(train);
     free(train);
 }
 
-void freeAllTrains(TrainNode *root)
+/* Frees the whole BST (postorder: children first, then the node). */
+void freeAllTrains(struct TrainNode *root)
 {
     if (root == NULL)
         return;
+
     freeAllTrains(root->left);
     freeAllTrains(root->right);
     freeTrain(root);

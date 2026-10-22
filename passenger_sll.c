@@ -1,116 +1,78 @@
 /*
  * passenger_sll.c
  * ---------------
- * Implementation of the confirmed-passenger SINGLY LINKED LIST.
+ * SINGLY LINKED LIST of confirmed passengers of one train.
+ *
+ *   passengerHead -> [100001 Rahul] -> [100002 Amit] -> NULL
  */
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include "passenger_sll.h"
-#include "route_dll.h"
+#include "railway.h"
 
-static void copyText(char *dest, const char *src, int size)
+/* Adds a passenger at the end of the list (so the list stays in booking order). */
+void addPassenger(struct TrainNode *train, struct Passenger *passenger)
 {
-    strncpy(dest, src, size - 1);
-    dest[size - 1] = '\0';
-}
+    struct Passenger *current;
 
-Passenger *createPassenger(int pnr, const char *name, int age, const char *gender,
-                           int trainNumber, int coachNumber, int seatNumber,
-                           const char *source, const char *destination, float fare)
-{
-    Passenger *p = (Passenger *)malloc(sizeof(Passenger));
-    if (p == NULL)
+    passenger->next = NULL;
+
+    if (train->passengerHead == NULL)
     {
-        printf("Memory allocation failed for passenger.\n");
-        return NULL;
-    }
-    p->pnr = pnr;
-    copyText(p->name, name, NAME_LEN);
-    p->age = age;
-    copyText(p->gender, gender, GENDER_LEN);
-    p->trainNumber = trainNumber;
-    p->coachNumber = coachNumber;
-    p->seatNumber = seatNumber;
-    copyText(p->source, source, NAME_LEN);
-    copyText(p->destination, destination, NAME_LEN);
-    p->fare = fare;
-    p->next = NULL;
-    return p;
-}
-
-void addPassenger(Passenger **head, Passenger *node)
-{
-    Passenger *cur;
-    if (node == NULL)
-        return;
-    node->next = NULL;
-
-    if (*head == NULL)
-    {
-        *head = node;
+        train->passengerHead = passenger;
         return;
     }
-    cur = *head;
-    while (cur->next != NULL)
-        cur = cur->next;
-    cur->next = node;
+
+    current = train->passengerHead;
+    while (current->next != NULL)
+        current = current->next;
+    current->next = passenger;
 }
 
-Passenger *searchPassenger(Passenger *head, int pnr)
+/* Returns the passenger with this PNR, or NULL. */
+struct Passenger *searchPassenger(struct TrainNode *train, int pnr)
 {
-    while (head != NULL)
+    struct Passenger *current = train->passengerHead;
+
+    while (current != NULL)
     {
-        if (head->pnr == pnr)
-            return head;
-        head = head->next;
+        if (current->pnr == pnr)
+            return current;
+        current = current->next;
     }
     return NULL;
 }
 
-Passenger *removePassenger(Passenger **head, int pnr)
+/*
+ * Takes the passenger with this PNR out of the list and returns it.
+ * The node is NOT freed here - the caller decides what to do with it.
+ */
+struct Passenger *removePassenger(struct TrainNode *train, int pnr)
 {
-    Passenger *cur = *head, *prev = NULL;
+    struct Passenger *current = train->passengerHead;
+    struct Passenger *previous = NULL;
 
-    while (cur != NULL && cur->pnr != pnr)
+    while (current != NULL && current->pnr != pnr)
     {
-        prev = cur;
-        cur = cur->next;
+        previous = current;
+        current = current->next;
     }
-    if (cur == NULL)
-        return NULL;
 
-    if (prev == NULL)
-        *head = cur->next;
+    if (current == NULL)
+        return NULL;                        /* PNR not found */
+
+    if (previous == NULL)
+        train->passengerHead = current->next;   /* removing the first node */
     else
-        prev->next = cur->next;
-    cur->next = NULL;
-    return cur;
+        previous->next = current->next;
+
+    current->next = NULL;
+    return current;
 }
 
-int deletePassenger(Passenger **head, int pnr)
+/* Prints all confirmed passengers as a table. */
+void displayPassengers(struct TrainNode *train)
 {
-    Passenger *node = removePassenger(head, pnr);
-    if (node == NULL)
-        return 0;
-    free(node);
-    return 1;
-}
+    struct Passenger *current = train->passengerHead;
 
-int passengerUsesStation(Passenger *head, const char *station)
-{
-    while (head != NULL)
-    {
-        if (namesEqual(head->source, station) || namesEqual(head->destination, station))
-            return 1;
-        head = head->next;
-    }
-    return 0;
-}
-
-void displayPassengers(Passenger *head)
-{
-    if (head == NULL)
+    if (current == NULL)
     {
         printf("No confirmed passengers.\n");
         return;
@@ -119,35 +81,42 @@ void displayPassengers(Passenger *head)
     printf("%-8s %-18s %-4s %-7s %-6s %-15s %-15s %s\n",
            "PNR", "Name", "Age", "Gender", "Seat", "From", "To", "Fare");
     printf("------------------------------------------------------------------------------------\n");
-    while (head != NULL)
+
+    while (current != NULL)
     {
         printf("%-8d %-18.18s %-4d %-7.7s C%d-%02d  %-15.15s %-15.15s Rs. %.0f\n",
-               head->pnr, head->name, head->age, head->gender,
-               head->coachNumber, head->seatNumber,
-               head->source, head->destination, head->fare);
-        head = head->next;
+               current->pnr, current->name, current->age, current->gender,
+               current->coachNumber, current->seatNumber,
+               current->source, current->destination, current->fare);
+        current = current->next;
     }
 }
 
-int countPassengers(Passenger *head)
+/* Counts confirmed passengers. */
+int countPassengers(struct TrainNode *train)
 {
+    struct Passenger *current = train->passengerHead;
     int count = 0;
-    while (head != NULL)
+
+    while (current != NULL)
     {
         count++;
-        head = head->next;
+        current = current->next;
     }
     return count;
 }
 
-void freePassengerList(Passenger **head)
+/* Frees the whole passenger list. */
+void freePassengers(struct TrainNode *train)
 {
-    Passenger *cur = *head, *next;
-    while (cur != NULL)
+    struct Passenger *current = train->passengerHead;
+    struct Passenger *nextPassenger;
+
+    while (current != NULL)
     {
-        next = cur->next;
-        free(cur);
-        cur = next;
+        nextPassenger = current->next;
+        free(current);
+        current = nextPassenger;
     }
-    *head = NULL;
+    train->passengerHead = NULL;
 }

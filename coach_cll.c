@@ -1,97 +1,81 @@
 /*
  * coach_cll.c
  * -----------
- * Implementation of the coach CIRCULAR LINKED LIST.
+ * CIRCULAR LINKED LIST of coaches.
+ *
+ *   C1 -> C2 -> C3 -> C4 -> C5
+ *   ^                       |
+ *   +-----------------------+
+ *
+ * The last coach points back to the first one, so booking can keep
+ * moving to the next coach forever: C1, C2, C3, C4, C5, C1, ...
  */
-#include <stdio.h>
-#include <stdlib.h>
-#include "coach_cll.h"
+#include "railway.h"
 
-Coach *createCoaches(int count)
+/* Creates coaches C1..C5 and joins the last coach back to the first. */
+void createCoaches(struct TrainNode *train)
 {
-    Coach *head = NULL, *tail = NULL, *node;
+    struct Coach *newCoach;
+    struct Coach *lastCoach = NULL;
     int i;
 
-    for (i = 1; i <= count; i++)
-    {
-        node = (Coach *)malloc(sizeof(Coach));
-        if (node == NULL)
-        {
-            printf("Memory allocation failed while creating coaches.\n");
-            if (tail != NULL)
-                tail->next = head; /* close the circle so freeCoaches works */
-            freeCoaches(&head);
-            return NULL;
-        }
-        node->coachNumber = i;
-        node->next = NULL;
+    train->coachHead = NULL;
 
-        if (head == NULL)
-            head = node;
+    for (i = 1; i <= MAX_COACHES; i++)
+    {
+        newCoach = malloc(sizeof(struct Coach));
+        checkMemory(newCoach);
+        newCoach->coachNumber = i;
+        newCoach->next = NULL;
+
+        if (train->coachHead == NULL)
+            train->coachHead = newCoach;
         else
-            tail->next = node;
-        tail = node;
+            lastCoach->next = newCoach;
+        lastCoach = newCoach;
     }
 
-    if (tail != NULL)
-        tail->next = head; /* make it circular */
-    return head;
+    lastCoach->next = train->coachHead;     /* this makes the list circular */
+    train->currentCoach = train->coachHead; /* first booking starts at C1   */
 }
 
-void displayCoaches(Coach *head)
+/* Returns the coach after this one (after C5 comes C1 again). */
+struct Coach *getNextCoach(struct Coach *coach)
 {
-    Coach *cur;
-    if (head == NULL)
-    {
-        printf("No coaches.\n");
-        return;
-    }
+    return coach->next;
+}
 
-    cur = head;
+/* Prints the coaches once around the circle. */
+void displayCoaches(struct TrainNode *train)
+{
+    struct Coach *coach = train->coachHead;
+
     do
     {
-        printf("C%d -> ", cur->coachNumber);
-        cur = cur->next;
-    } while (cur != head);
-    printf("(back to C%d)\n", head->coachNumber);
+        printf("C%d -> ", coach->coachNumber);
+        coach = coach->next;
+    } while (coach != train->coachHead);    /* stop when we are back at C1 */
+
+    printf("(back to C%d)\n", train->coachHead->coachNumber);
 }
 
-Coach *getNextCoach(Coach *current)
+/* Frees all coaches. */
+void freeCoaches(struct TrainNode *train)
 {
-    if (current == NULL)
-        return NULL;
-    return current->next;
-}
+    struct Coach *coach, *nextCoach;
 
-int countCoaches(Coach *head)
-{
-    Coach *cur;
-    int count = 0;
-    if (head == NULL)
-        return 0;
-
-    cur = head;
-    do
-    {
-        count++;
-        cur = cur->next;
-    } while (cur != head);
-    return count;
-}
-
-void freeCoaches(Coach **head)
-{
-    Coach *cur, *next;
-    if (head == NULL || *head == NULL)
+    if (train->coachHead == NULL)
         return;
 
-    cur = (*head)->next;
-    while (cur != *head)
+    coach = train->coachHead->next;
+    while (coach != train->coachHead)       /* free C2..C5 */
     {
-        next = cur->next;
-        free(cur);
-        cur = next;
+        nextCoach = coach->next;
+        free(coach);
+        coach = nextCoach;
     }
-    free(*head);
-    *head = NULL;
+    free(train->coachHead);                 /* free C1 */
+
+    train->coachHead = NULL;
+    train->currentCoach = NULL;
 }

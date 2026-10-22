@@ -1,114 +1,99 @@
 /*
  * seat_array.c
  * ------------
- * Implementation of the seat ARRAY operations.
- * Accessing seats[c][s] is O(1) - that is the reason an array is used.
+ * ARRAY of seats:  int seats[5][10]
+ *   row    = coach (C1..C5)      -> index coachNumber - 1
+ *   column = seat  (01..10)      -> index seatNumber - 1
+ *   value  = 0 available, 1 booked
  */
-#include <stdio.h>
-#include "seat_array.h"
+#include "railway.h"
 
-static int isValidPosition(int coachNumber, int seatNumber)
+/* Marks every seat as available. */
+void initSeats(struct TrainNode *train)
 {
-    return coachNumber >= 1 && coachNumber <= MAX_COACHES &&
-           seatNumber >= 1 && seatNumber <= SEATS_PER_COACH;
+    int coach, seat;
+
+    for (coach = 0; coach < MAX_COACHES; coach++)
+        for (seat = 0; seat < SEATS_PER_COACH; seat++)
+            train->seats[coach][seat] = SEAT_AVAILABLE;
 }
 
-void initSeats(int seats[MAX_COACHES][SEATS_PER_COACH])
+/* Prints the seat map of every coach (A = available, X = booked). */
+void displaySeats(struct TrainNode *train)
 {
-    int c, s;
-    for (c = 0; c < MAX_COACHES; c++)
-        for (s = 0; s < SEATS_PER_COACH; s++)
-            seats[c][s] = SEAT_AVAILABLE;
-}
+    int coach, seat;
 
-void displayCoachSeats(int seats[MAX_COACHES][SEATS_PER_COACH], int coachNumber)
-{
-    int s;
-    if (coachNumber < 1 || coachNumber > MAX_COACHES)
+    for (coach = 1; coach <= MAX_COACHES; coach++)
     {
-        printf("Invalid coach number.\n");
-        return;
+        printf("Coach C%d:   (%d/%d available)\n\n", coach,
+               countFreeSeatsInCoach(train, coach), SEATS_PER_COACH);
+
+        for (seat = 1; seat <= SEATS_PER_COACH; seat++)
+        {
+            if (train->seats[coach - 1][seat - 1] == SEAT_BOOKED)
+                printf("%02d[X] ", seat);
+            else
+                printf("%02d[A] ", seat);
+
+            if (seat % 5 == 0)
+                printf("\n");
+        }
+        printf("\n");
     }
-
-    printf("Coach C%d:   (%d/%d available)\n\n", coachNumber,
-           countAvailableInCoach(seats, coachNumber), SEATS_PER_COACH);
-    for (s = 0; s < SEATS_PER_COACH; s++)
-    {
-        printf("%02d[%c] ", s + 1,
-               seats[coachNumber - 1][s] == SEAT_BOOKED ? 'X' : 'A');
-        if ((s + 1) % 5 == 0)
-            printf("\n");
-    }
-    printf("\n");
-}
-
-void displaySeats(int seats[MAX_COACHES][SEATS_PER_COACH])
-{
-    int c;
-    for (c = 1; c <= MAX_COACHES; c++)
-        displayCoachSeats(seats, c);
-
     printf("A = Available    X = Booked\n");
-    printf("Total available seats: %d / %d\n", countAvailableSeats(seats), TOTAL_SEATS);
+    printf("Total available seats: %d / %d\n", countFreeSeats(train), TOTAL_SEATS);
 }
 
-int findAvailableSeatInCoach(int seats[MAX_COACHES][SEATS_PER_COACH], int coachNumber)
+/* Counts free seats in one coach. */
+int countFreeSeatsInCoach(struct TrainNode *train, int coachNumber)
 {
-    int s;
-    if (coachNumber < 1 || coachNumber > MAX_COACHES)
-        return 0;
+    int seat, count = 0;
 
-    for (s = 0; s < SEATS_PER_COACH; s++)
-        if (seats[coachNumber - 1][s] == SEAT_AVAILABLE)
-            return s + 1;
-    return 0;
-}
-
-int bookSeat(int seats[MAX_COACHES][SEATS_PER_COACH], int coachNumber, int seatNumber)
-{
-    if (!isValidPosition(coachNumber, seatNumber))
-        return -1;
-    if (seats[coachNumber - 1][seatNumber - 1] == SEAT_BOOKED)
-        return 0;
-
-    seats[coachNumber - 1][seatNumber - 1] = SEAT_BOOKED;
-    return 1;
-}
-
-int releaseSeat(int seats[MAX_COACHES][SEATS_PER_COACH], int coachNumber, int seatNumber)
-{
-    if (!isValidPosition(coachNumber, seatNumber))
-        return -1;
-    if (seats[coachNumber - 1][seatNumber - 1] == SEAT_AVAILABLE)
-        return 0;
-
-    seats[coachNumber - 1][seatNumber - 1] = SEAT_AVAILABLE;
-    return 1;
-}
-
-int isSeatAvailable(int seats[MAX_COACHES][SEATS_PER_COACH], int coachNumber, int seatNumber)
-{
-    if (!isValidPosition(coachNumber, seatNumber))
-        return 0;
-    return seats[coachNumber - 1][seatNumber - 1] == SEAT_AVAILABLE;
-}
-
-int countAvailableInCoach(int seats[MAX_COACHES][SEATS_PER_COACH], int coachNumber)
-{
-    int s, count = 0;
-    if (coachNumber < 1 || coachNumber > MAX_COACHES)
-        return 0;
-
-    for (s = 0; s < SEATS_PER_COACH; s++)
-        if (seats[coachNumber - 1][s] == SEAT_AVAILABLE)
+    for (seat = 0; seat < SEATS_PER_COACH; seat++)
+        if (train->seats[coachNumber - 1][seat] == SEAT_AVAILABLE)
             count++;
     return count;
 }
 
-int countAvailableSeats(int seats[MAX_COACHES][SEATS_PER_COACH])
+/* Counts free seats in the whole train. */
+int countFreeSeats(struct TrainNode *train)
 {
-    int c, count = 0;
-    for (c = 1; c <= MAX_COACHES; c++)
-        count += countAvailableInCoach(seats, c);
+    int coach, count = 0;
+
+    for (coach = 1; coach <= MAX_COACHES; coach++)
+        count += countFreeSeatsInCoach(train, coach);
     return count;
+}
+
+/* Returns the first free seat number (1..10) in a coach, or 0 if the coach is full. */
+int findFreeSeat(struct TrainNode *train, int coachNumber)
+{
+    int seat;
+
+    for (seat = 1; seat <= SEATS_PER_COACH; seat++)
+        if (train->seats[coachNumber - 1][seat - 1] == SEAT_AVAILABLE)
+            return seat;
+    return 0;
+}
+
+/* Returns 1 if this seat exists and is free. */
+int isSeatFree(struct TrainNode *train, int coachNumber, int seatNumber)
+{
+    if (coachNumber < 1 || coachNumber > MAX_COACHES)
+        return 0;
+    if (seatNumber < 1 || seatNumber > SEATS_PER_COACH)
+        return 0;
+    return train->seats[coachNumber - 1][seatNumber - 1] == SEAT_AVAILABLE;
+}
+
+/* Marks a seat as booked. */
+void bookSeat(struct TrainNode *train, int coachNumber, int seatNumber)
+{
+    train->seats[coachNumber - 1][seatNumber - 1] = SEAT_BOOKED;
+}
+
+/* Marks a seat as available again. */
+void releaseSeat(struct TrainNode *train, int coachNumber, int seatNumber)
+{
+    train->seats[coachNumber - 1][seatNumber - 1] = SEAT_AVAILABLE;
 }
