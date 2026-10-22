@@ -1,191 +1,64 @@
 /*
- * route_dll.c
- * -----------
- * DOUBLY LINKED LIST of stations (the route of one train).
- *
- *   NULL <- Mumbai <-> Surat <-> Vadodara <-> ... <-> Delhi -> NULL
- *           (routeHead)                              (routeTail)
+ * route_dll.c - DOUBLY LINKED LIST of stations (the route of a train).
+ * head <-> ... <-> tail : next goes forward, prev goes backward
  */
 #include "railway.h"
 
-/* Compares two names without caring about capital letters ("agra" == "Agra"). */
-int sameName(char first[], char second[])
-{
+/* Compares two names ignoring capital letters ("delhi" is the same as "Delhi"). */
+int sameName(char a[], char b[]) {
     int i = 0;
-    char a, b;
-
-    while (first[i] != '\0' && second[i] != '\0')
-    {
-        a = first[i];
-        b = second[i];
-        if (a >= 'A' && a <= 'Z')
-            a = a + 32;     /* convert to small letter */
-        if (b >= 'A' && b <= 'Z')
-            b = b + 32;
-        if (a != b)
-            return 0;
+    while (a[i] != '\0' && b[i] != '\0') {
+        char x = a[i], y = b[i];
+        if (x >= 'A' && x <= 'Z') x = x + 32;   /* make small letter */
+        if (y >= 'A' && y <= 'Z') y = y + 32;
+        if (x != y) return 0;
         i++;
     }
-    return first[i] == second[i];   /* both strings must end together */
+    return a[i] == b[i];                    /* both must end together */
 }
 
-/* Returns the station with this name, or NULL if it is not on the route. */
-struct Station *searchStation(struct TrainNode *train, char name[])
-{
-    struct Station *station = train->routeHead;
-
-    while (station != NULL)
-    {
-        if (sameName(station->name, name))
-            return station;
-        station = station->next;
-    }
-    return NULL;
+/* Adds a station at the end of the train's route. */
+void addStation(Train *t, char name[]) {
+    Station *newNode = malloc(sizeof(Station));
+    if (!newNode) return;
+    strcpy(newNode->name, name);
+    newNode->next = NULL;
+    newNode->prev = t->tail;
+    if (t->head == NULL) t->head = newNode;
+    else t->tail->next = newNode;
+    t->tail = newNode;
 }
 
-/* Returns the position of a station (0 = first station), or -1 if not found. */
-int getStationPosition(struct TrainNode *train, char name[])
-{
-    struct Station *station = train->routeHead;
-    int position = 0;
-
-    while (station != NULL)
-    {
-        if (sameName(station->name, name))
-            return position;
-        position++;
-        station = station->next;
-    }
-    return -1;
-}
-
-/* Counts the stations on the route. */
-int countStations(struct TrainNode *train)
-{
-    struct Station *station = train->routeHead;
-    int count = 0;
-
-    while (station != NULL)
-    {
-        count++;
-        station = station->next;
-    }
-    return count;
-}
-
-/* Adds a new station at the end of the route. */
-void addStationAtEnd(struct TrainNode *train, char name[])
-{
-    struct Station *station = malloc(sizeof(struct Station));
-    checkMemory(station);
-
-    strcpy(station->name, name);
-    station->next = NULL;
-    station->prev = train->routeTail;
-
-    if (train->routeHead == NULL)
-        train->routeHead = station;         /* first station of the route */
-    else
-        train->routeTail->next = station;
-
-    train->routeTail = station;
-}
-
-/* Inserts a new station right after the station 'position'. */
-void insertStationAfter(struct TrainNode *train, struct Station *position, char name[])
-{
-    struct Station *station = malloc(sizeof(struct Station));
-    checkMemory(station);
-
-    strcpy(station->name, name);
-    station->prev = position;
-    station->next = position->next;
-
-    if (position->next != NULL)
-        position->next->prev = station;
-    else
-        train->routeTail = station;         /* inserted at the end */
-
-    position->next = station;
-}
-
-/* Inserts a new station just before the final destination. */
-void addStationBeforeDestination(struct TrainNode *train, char name[])
-{
-    insertStationAfter(train, train->routeTail->prev, name);
-}
-
-/* Unlinks a station from the route and frees it. */
-void deleteStation(struct TrainNode *train, struct Station *station)
-{
-    if (station->prev != NULL)
-        station->prev->next = station->next;
-    else
-        train->routeHead = station->next;   /* deleting the first station */
-
-    if (station->next != NULL)
-        station->next->prev = station->prev;
-    else
-        train->routeTail = station->prev;   /* deleting the last station */
-
-    free(station);
-}
-
-/* Prints the route from source to destination using the 'next' links. */
-void displayRouteForward(struct TrainNode *train)
-{
-    struct Station *station = train->routeHead;
-
-    while (station != NULL)
-    {
-        printf("  %s\n", station->name);
-        if (station->next != NULL)
-            printf("   |\n   v\n");
-        station = station->next;
-    }
-}
-
-/* Prints the route from destination to source using the 'prev' links. */
-void displayRouteBackward(struct TrainNode *train)
-{
-    struct Station *station = train->routeTail;
-
-    while (station != NULL)
-    {
-        printf("  %s\n", station->name);
-        if (station->prev != NULL)
-            printf("   |\n   v\n");
-        station = station->prev;
-    }
-}
-
-/* Prints the route on one line:  A <-> B <-> C */
-void displayRouteInLine(struct TrainNode *train)
-{
-    struct Station *station = train->routeHead;
-
-    while (station != NULL)
-    {
-        printf("%s", station->name);
-        if (station->next != NULL)
-            printf(" <-> ");
-        station = station->next;
+/* Prints the route from the first station to the last (uses next). */
+void displayForward(Train *t) {
+    Station *temp = t->head;
+    while (temp != NULL) {
+        printf("%s", temp->name);
+        if (temp->next != NULL) printf(" -> ");
+        temp = temp->next;
     }
     printf("\n");
 }
 
-/* Frees every station of the route. */
-void freeRoute(struct TrainNode *train)
-{
-    struct Station *station = train->routeHead;
-    struct Station *nextStation;
-
-    while (station != NULL)
-    {
-        nextStation = station->next;
-        free(station);
-        station = nextStation;
+/* Prints the route from the last station to the first (uses prev). */
+void displayBackward(Train *t) {
+    Station *temp = t->tail;
+    while (temp != NULL) {
+        printf("%s", temp->name);
+        if (temp->prev != NULL) printf(" -> ");
+        temp = temp->prev;
     }
-    train->routeHead = NULL;
-    train->routeTail = NULL;
+    printf("\n");
+}
+
+/* Returns the position of a station on the route (0, 1, 2, ...) or -1 if not found. */
+int stationIndex(Train *t, char name[]) {
+    Station *temp = t->head;
+    int i = 0;
+    while (temp != NULL) {
+        if (sameName(temp->name, name)) return i;
+        temp = temp->next;
+        i++;
+    }
+    return -1;
 }
